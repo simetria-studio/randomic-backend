@@ -27,10 +27,10 @@ function mountAdminStatic(app) {
   app.get(['/admin', '/admin/{*splat}'], (req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
-// Public privacy policy page. Contact e-mail comes from PRIVACY_CONTACT.
+// Public privacy policy page. Contact e-mail defaults to contato@dinblu.com.br; PRIVACY_CONTACT overrides it.
 function privacyPage(req, res) {
   const file = path.join(__dirname, '..', 'public', 'privacidade.html');
-  const contact = process.env.PRIVACY_CONTACT || 'contato@exemplo.com';
+  const contact = process.env.PRIVACY_CONTACT || 'contato@dinblu.com.br';
   const html = fs.readFileSync(file, 'utf8').replaceAll('{{CONTACT}}', contact);
   res.type('html').send(html);
 }
