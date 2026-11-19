@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const { query } = require('../db');
+const { query, pool } = require('../db');
+const { deleteFile } = require('../storage');
 const { signToken, requireAuth, isAdult } = require('../auth');
 const { effectiveStatus, restrictionBody } = require('../accountStatus');
 
@@ -84,7 +85,39 @@ router.post('/login', async (req, res, next) => {
 
 router.delete('/account', requireAuth, async (req, res, next) => {
   try {
-    await query('DELETE FROM users WHERE id = $1', [req.userId]);
+    // Collect files first: the cascade removes the rows but not the files on disk.
+    const client = await pool.connect();
+    let files = [];
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `SELECT url FROM photos WHERE user_id = $1
+         UNION
+         SELECT m.media_url FROM messages m
+           JOIN conversations c ON c.id = m.conversation_id
+          WHERE (c.user_a = $1 OR c.user_b = $1) AND m.media_url IS NOT NULL`,
+        [req.userId]
+      );
+      files = rows.map((r) => r.url);
+      await client.query('DELETE FROM users WHERE id = $1', [req.userId]);
+      // keep files still referenced by someone else's rows
+      const { rows: still } = files.length
+        ? await client.query(
+            `SELECT url FROM photos WHERE url = ANY($1)
+             UNION SELECT media_url FROM messages WHERE media_url = ANY($1)`,
+            [files]
+          )
+        : { rows: [] };
+      const keep = new Set(still.map((r) => r.url));
+      files = files.filter((u) => !keep.has(u));
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+    for (const u of files) await deleteFile(u);
     res.status(204).end();
   } catch (e) {
     next(e);

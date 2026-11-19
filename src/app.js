@@ -27,12 +27,14 @@ function mountAdminStatic(app) {
   app.get(['/admin', '/admin/{*splat}'], (req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
-// Public privacy policy page. Contact e-mail defaults to contato@dinblu.com.br; PRIVACY_CONTACT overrides it.
-function privacyPage(req, res) {
-  const file = path.join(__dirname, '..', 'public', 'privacidade.html');
-  const contact = process.env.PRIVACY_CONTACT || 'contato@dinblu.com.br';
-  const html = fs.readFileSync(file, 'utf8').replaceAll('{{CONTACT}}', contact);
-  res.type('html').send(html);
+// Public legal pages. Contact e-mail defaults to contato@dinblu.com.br; PRIVACY_CONTACT overrides it.
+function legalPage(name) {
+  return (req, res) => {
+    const file = path.join(__dirname, '..', 'public', name);
+    const contact = process.env.PRIVACY_CONTACT || 'contato@dinblu.com.br';
+    const html = fs.readFileSync(file, 'utf8').replaceAll('{{CONTACT}}', contact);
+    res.type('html').send(html);
+  };
 }
 
 function createApp() {
@@ -40,7 +42,8 @@ function createApp() {
   app.set('trust proxy', 1);
   app.use(express.json());
   app.get('/health', (req, res) => res.json({ ok: true }));
-  app.get(['/privacidade', '/privacy'], privacyPage);
+  app.get(['/privacidade', '/privacy'], legalPage('privacidade.html'));
+  app.get(['/excluir-conta', '/delete-account'], legalPage('excluir-conta.html'));
   app.use('/auth', authRoutes);
   app.use('/uploads', express.static(uploadDir()));
   app.use('/admin-api', adminCors, adminRoutes);

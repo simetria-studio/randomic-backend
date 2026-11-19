@@ -79,4 +79,27 @@ describe('login and delete', () => {
     const login = await request(app).post('/auth/login').send({ email: valid.email, password: valid.password });
     expect(login.status).toBe(401);
   });
+  test('DELETE /auth/account removes the photo and media files from disk', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'randomic-del-'));
+    const reg = await request(app).post('/auth/register').send(valid);
+    const other = await request(app).post('/auth/register').send({ ...valid, email: 'c@d.com' });
+    const dir = process.env.UPLOAD_DIR;
+    for (const f of ['p.jpg', 'm.jpg']) fs.writeFileSync(path.join(dir, f), 'x');
+    await query('INSERT INTO photos (user_id, url) VALUES ($1, $2)', [reg.body.user.id, '/uploads/p.jpg']);
+    const [a, b] = [reg.body.user.id, other.body.user.id].sort();
+    const { rows } = await query('INSERT INTO conversations (user_a, user_b) VALUES ($1,$2) RETURNING id', [a, b]);
+    await query(
+      "INSERT INTO messages (conversation_id, sender_id, type, media_url) VALUES ($1,$2,'photo','/uploads/m.jpg')",
+      [rows[0].id, other.body.user.id]
+    );
+    const res = await request(app).delete('/auth/account').set('Authorization', `Bearer ${reg.body.token}`);
+    expect(res.status).toBe(204);
+    expect(fs.existsSync(path.join(dir, 'p.jpg'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, 'm.jpg'))).toBe(false);
+    const left = await query('SELECT 1 FROM users');
+    expect(left.rows).toHaveLength(1);
+  });
 });
